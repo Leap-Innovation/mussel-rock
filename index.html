@@ -10,6 +10,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.4.4/luxon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+  <!-- Your personal config — edit config.js, never touch this file -->
+  <script src="config.js"></script>
   <style>
     /* ── Reset & base ───────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -298,42 +300,16 @@
 </div>
 
 <script>
-/* ═══════════════════════════════════════════════════════════════════
-   CONFIG — edit these values before deploying
-   ═══════════════════════════════════════════════════════════════════ */
-const CONFIG = {
-  // Paste your Apps Script web app deployment URL here (from Extensions → Apps Script → Deploy)
-  GAS_URL:    'https://script.google.com/macros/s/AKfycbyP9LGo09VkMgmdH5S6A8OyE3QQDcAvpq4HBATZ6ucPWdl_FJ00VuGj55CYe8OZsxTIAQ/exec',
-
-  // Free NIWA tides API key — register at https://developer.niwa.co.nz
-  // Leave '' to skip tide chart (a setup notice will be shown instead)
-  NIWA_KEY:   'vCGlyB8VgvPfxiWIyRPCXnQxuWEcielw',
-
-  // Station coordinates
-  LAT:        -36.773157,
-  LNG:        175.027363,
-
-  // Wind unit displayed: 'ms' = m/s  |  'kmh' = km/h  |  'kts' = knots
-  WIND_UNIT:  'ms',
-
-  // How many hours of wind history to fetch (max 168)
-  WIND_HOURS: 24,
-
-  // Auto-refresh interval in minutes (0 = disabled)
-  REFRESH_MIN: 5,
-
-  SITE_NAME:  'Mussel Rock',
-  TIMEZONE:   'Pacific/Auckland',
-};
-/* ═══════════════════════════════════════════════════════════════════ */
+// CONFIG is loaded from config.js (see <head>) — edit that file, not this one.
 
 const { DateTime } = luxon;
 
 /* ── Unit helpers ─────────────────────────────────────────────── */
-function toDisplaySpeed(ms) {
-  if (CONFIG.WIND_UNIT === 'kmh') return (ms * 3.6).toFixed(1);
-  if (CONFIG.WIND_UNIT === 'kts') return (ms * 1.94384).toFixed(1);
-  return Number(ms).toFixed(1);
+// Raw data is already in the unit specified by WIND_UNIT — no conversion needed.
+// If you ever switch to a station that outputs m/s and want to display in kts,
+// change WIND_UNIT to 'ms' and add a * 1.94384 multiplier here.
+function toDisplaySpeed(v) {
+  return Number(v).toFixed(1);
 }
 function unitLabel() {
   if (CONFIG.WIND_UNIT === 'kmh') return 'km/h';
@@ -369,6 +345,31 @@ Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', san
 Chart.defaults.font.size = 11;
 const GRID = { color: '#21262d', tickColor: 'transparent' };
 const ADAPTOPTS = { locale: 'en-NZ' };
+
+/* ── "Now" vertical line — drawn on every time-axis chart ─────── */
+Chart.register({
+  id: 'nowLine',
+  afterDraw(chart) {
+    const xScale = chart.scales.x;
+    if (!xScale || xScale.type !== 'time') return;
+    const x = xScale.getPixelForValue(Date.now());
+    if (x < xScale.left || x > xScale.right) return;
+    const { ctx, chartArea } = chart;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.font = 'bold 9px -apple-system,sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.textAlign = 'center';
+    ctx.fillText('NOW', x, chartArea.top + 10);
+    ctx.restore();
+  }
+});
 
 function timeScaleOpts(unit, fmt) {
   return {
