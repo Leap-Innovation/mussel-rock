@@ -353,15 +353,16 @@ Chart.register({
     const xScale = chart.scales.x;
     if (!xScale || xScale.type !== 'time') return;
     const x = xScale.getPixelForValue(Date.now());
-    if (x < xScale.left || x > xScale.right) return;
+    // Allow a few px of overflow so the line shows even when "now" is at the
+    // rightmost edge of the chart (e.g. the wind 24 h window ends at "now").
+    if (x < xScale.left || x > xScale.right + 4) return;
     const { ctx, chartArea } = chart;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(x, chartArea.top);
     ctx.lineTo(x, chartArea.bottom);
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.strokeStyle = 'rgba(230,180,0,0.75)';
     ctx.lineWidth = 1.5;
-    ctx.setLineDash([5, 4]);
     ctx.stroke();
     ctx.restore();
   }
