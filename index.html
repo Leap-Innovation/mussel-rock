@@ -491,13 +491,19 @@ function renderDirChart(data) {
     .filter(d => d.wmax > 0)
     .map(d => ({ x: d.t, y: d.wd }));
 
+  // Auto-scale to data range with 20° padding so dots aren't squashed at edges.
+  // Compass labels are drawn at every 45° increment that falls within the range.
+  const degs = pts.map(p => p.y);
+  const dMin = degs.length ? Math.max(0,   Math.min(...degs) - 20) : 0;
+  const dMax = degs.length ? Math.min(360, Math.max(...degs) + 20) : 360;
+
   charts.dir = new Chart(ctx, {
     type: 'scatter',
     data: {
       datasets: [{
         label: 'Direction',
         data: pts,
-        backgroundColor: 'rgba(88,166,255,0.6)',
+        backgroundColor: 'rgba(88,166,255,0.7)',
         pointRadius: 3,
         pointHoverRadius: 5,
       }]
@@ -520,11 +526,13 @@ function renderDirChart(data) {
         x: timeScaleOpts('hour'),
         y: {
           grid: GRID,
-          min: 0, max: 360,
+          min: dMin,
+          max: dMax,
           ticks: {
-            maxTicksLimit: 5,
+            // Show a label at every 45° step that falls within the visible range
+            values: [0,45,90,135,180,225,270,315,360].filter(v => v >= dMin && v <= dMax),
             callback: v => {
-              const map = { 0:'N', 90:'E', 180:'S', 270:'W', 360:'N' };
+              const map = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW',360:'N'};
               return map[v] !== undefined ? map[v] : '';
             }
           }
