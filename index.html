@@ -367,14 +367,18 @@ Chart.register({
   }
 });
 
-function timeScaleOpts(unit, fmt) {
-  return {
+function timeScaleOpts(unit, fmt, pinToNow) {
+  const opts = {
     type: 'time',
     adapters: { date: { zone: CONFIG.TIMEZONE } },
     time: { unit: unit, displayFormats: { hour: fmt || 'ha', day: 'EEE d' } },
     grid: GRID,
     ticks: { maxTicksLimit: 6, maxRotation: 0 },
   };
+  // Extend the axis to the current moment so the NOW line always appears
+  // even when the last data point is hours in the past.
+  if (pinToNow) opts.max = Date.now();
+  return opts;
 }
 
 let charts = {};
@@ -412,7 +416,6 @@ function renderWindChart(data) {
           data: gust,
           borderColor: '#f0883e',
           borderWidth: 1.5,
-          borderDash: [4, 3],
           pointRadius: 0,
           tension: 0.4,
           fill: false,
@@ -444,7 +447,7 @@ function renderWindChart(data) {
         }
       },
       scales: {
-        x: timeScaleOpts('hour'),
+        x: timeScaleOpts('hour', null, true),
         y: {
           grid: GRID,
           beginAtZero: true,
@@ -509,7 +512,7 @@ function renderDirChart(data) {
         }
       },
       scales: {
-        x: timeScaleOpts('hour'),
+        x: timeScaleOpts('hour', null, true),
         y: {
           grid: GRID,
           min: dMin,
