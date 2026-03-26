@@ -678,12 +678,17 @@ async function fetchTides() {
   return r.json();
 }
 
+// Use Luxon for robust ISO parsing — new Date() can silently return NaN on
+// timestamps with timezone offsets like "2026-03-27T00:00:00+13:00".
+function tideMs(isoStr) {
+  return DateTime.fromISO(isoStr).toMillis();
+}
+
 /* ── Find next high / low tide ────────────────────────────────── */
 function nextTideEvent(times, heights) {
   const nowMs = Date.now();
   for (let i = 1; i < times.length - 1; i++) {
-    const t = new Date(times[i]).getTime();
-    if (t < nowMs) continue;
+    if (tideMs(times[i]) < nowMs) continue;
     const isHigh = heights[i] >= heights[i-1] && heights[i] >= heights[i+1];
     const isLow  = heights[i] <= heights[i-1] && heights[i] <= heights[i+1];
     if (isHigh || isLow) {
@@ -700,8 +705,8 @@ function currentTideInfo(times, heights) {
   const nowMs = Date.now();
   let best = 0;
   for (let i = 0; i < times.length; i++) {
-    if (Math.abs(new Date(times[i]).getTime() - nowMs) <
-        Math.abs(new Date(times[best]).getTime() - nowMs)) best = i;
+    if (Math.abs(tideMs(times[i]) - nowMs) < Math.abs(tideMs(times[best]) - nowMs))
+      best = i;
   }
   const h = heights[best];
   const rising = best < heights.length - 1 && heights[best + 1] > h;
