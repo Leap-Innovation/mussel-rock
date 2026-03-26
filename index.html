@@ -253,7 +253,6 @@
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> 10m MA</div>
       <div class="legend-item"><div class="legend-dash" style="background:#f0883e"></div> Gust</div>
-      <div class="legend-item"><div class="legend-dash" style="background:#3fb950"></div> Min</div>
     </div>
   </div>
 
@@ -362,7 +361,7 @@ Chart.register({
     ctx.moveTo(x, chartArea.top);
     ctx.lineTo(x, chartArea.bottom);
     ctx.strokeStyle = 'rgba(230,180,0,0.75)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.restore();
   }
@@ -401,7 +400,6 @@ function renderWindChart(data) {
   const raw  = data.map(d => toDisplaySpeed(d.ws));
   const ma   = movingAvg(raw, MA_WINDOW);
   const gust = data.map(d => toDisplaySpeed(d.wmax));
-  const min  = data.map(d => toDisplaySpeed(d.wmin));
 
   charts.wind = new Chart(ctx, {
     type: 'line',
@@ -412,45 +410,23 @@ function renderWindChart(data) {
           label: 'Gust',
           data: gust,
           borderColor: '#f0883e',
-          backgroundColor: 'rgba(240,136,62,0.08)',
           borderWidth: 1.5,
-          borderDash: [4,2],
+          borderDash: [4, 3],
           pointRadius: 0,
-          tension: 0.3,
+          tension: 0.4,
           fill: false,
-          order: 3,
-        },
-        {
-          label: 'Avg',
-          data: raw,
-          borderColor: 'rgba(88,166,255,0.2)',
-          backgroundColor: 'rgba(88,166,255,0.07)',
-          borderWidth: 1,
-          pointRadius: 0,
-          tension: 0.3,
-          fill: 'origin',
           order: 2,
         },
         {
           label: '10m MA',
           data: ma,
           borderColor: '#58a6ff',
-          borderWidth: 2.5,
+          backgroundColor: 'rgba(88,166,255,0.15)',
+          borderWidth: 2,
           pointRadius: 0,
           tension: 0.4,
-          fill: false,
+          fill: 'origin',
           order: 1,
-        },
-        {
-          label: 'Min',
-          data: min,
-          borderColor: '#3fb950',
-          borderWidth: 1,
-          borderDash: [3,3],
-          pointRadius: 0,
-          tension: 0.3,
-          fill: false,
-          order: 2,
         },
       ]
     },
@@ -486,26 +462,35 @@ function renderDirChart(data) {
   destroyChart('dir');
   const ctx = document.getElementById('chart-dir').getContext('2d');
 
-  // Filter out calm/zero readings for direction (wmax === 0 means calm)
-  const pts = data
-    .filter(d => d.wmax > 0)
-    .map(d => ({ x: d.t, y: d.wd }));
+  // Filter calm readings, then build a line dataset that inserts null gaps
+  // wherever direction wraps around (>180° jump), avoiding ugly vertical lines.
+  const active = data.filter(d => d.wmax > 0);
+  const lineData = [];
+  for (let i = 0; i < active.length; i++) {
+    if (i > 0 && Math.abs(active[i].wd - active[i-1].wd) > 180) {
+      lineData.push({ x: active[i].t, y: null });
+    }
+    lineData.push({ x: active[i].t, y: active[i].wd });
+  }
 
-  // Auto-scale to data range with 20° padding so dots aren't squashed at edges.
-  // Compass labels are drawn at every 45° increment that falls within the range.
-  const degs = pts.map(p => p.y);
+  // Auto-scale to data range with 20° padding.
+  const degs = active.map(d => d.wd);
   const dMin = degs.length ? Math.max(0,   Math.min(...degs) - 20) : 0;
   const dMax = degs.length ? Math.min(360, Math.max(...degs) + 20) : 360;
 
   charts.dir = new Chart(ctx, {
-    type: 'scatter',
+    type: 'line',
     data: {
       datasets: [{
         label: 'Direction',
-        data: pts,
-        backgroundColor: 'rgba(88,166,255,0.7)',
-        pointRadius: 3,
-        pointHoverRadius: 5,
+        data: lineData,
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.12)',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: 'origin',
+        spanGaps: false,
       }]
     },
     options: {
