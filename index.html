@@ -348,7 +348,7 @@ const ADAPTOPTS = { locale: 'en-NZ' };
 /* ── "Now" vertical line — drawn on every time-axis chart ─────── */
 Chart.register({
   id: 'nowLine',
-  afterDraw(chart) {
+  afterRender(chart) {
     const xScale = chart.scales.x;
     if (!xScale || xScale.type !== 'time') return;
     const x = xScale.getPixelForValue(Date.now());
@@ -397,9 +397,10 @@ function renderWindChart(data) {
   destroyChart('wind');
   const ctx = document.getElementById('chart-wind').getContext('2d');
   const labels = data.map(d => d.t);
-  const raw  = data.map(d => toDisplaySpeed(d.ws));
-  const ma   = movingAvg(raw, MA_WINDOW);
-  const gust = data.map(d => toDisplaySpeed(d.wmax));
+  const raw      = data.map(d => toDisplaySpeed(d.ws));
+  const ma       = movingAvg(raw, MA_WINDOW);
+  const rawGust  = data.map(d => toDisplaySpeed(d.wmax));
+  const gust     = movingAvg(rawGust, MA_WINDOW);
 
   charts.wind = new Chart(ctx, {
     type: 'line',
@@ -714,7 +715,9 @@ function updateWindCard(data) {
   document.getElementById('wind-arrow').textContent     = bearingArrow(latest.wd);
   document.getElementById('wind-speed').textContent     = ma10;
   document.getElementById('wind-unit').textContent      = unitLabel() + ' (10m)';
-  document.getElementById('wind-gust').textContent      = toDisplaySpeed(latest.wmax);
+  const rawGusts = data.slice(-MA_WINDOW).map(d => parseFloat(toDisplaySpeed(d.wmax)));
+  const maGust   = (rawGusts.reduce((s, v) => s + v, 0) / rawGusts.length).toFixed(1);
+  document.getElementById('wind-gust').textContent      = maGust;
   document.getElementById('wind-dir-text').textContent  = latest.wdt || deg2dir(latest.wd);
 }
 
