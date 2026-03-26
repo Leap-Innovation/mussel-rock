@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d1117">
+  <title>Mussel Rock</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.4.4/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+  <style>
+    /* ── Reset & base ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+    a { color: #58a6ff; text-decoration: none; }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    .page { max-width: 480px; margin: 0 auto; padding: 0 0 32px; }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #21262d;
+    }
+    .site-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f0f6fc;
+      letter-spacing: -0.3px;
+    }
+    .site-name span { color: #58a6ff; }
+    .updated {
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .refresh-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #8b949e;
+      font-size: 18px;
+      padding: 2px 4px;
+      transition: color 0.2s;
+    }
+    .refresh-btn:hover { color: #58a6ff; }
+    .refresh-btn.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Condition cards ────────────────────────────────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 12px 12px 4px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      padding: 12px 10px 10px;
+      text-align: center;
+    }
+    .card-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #8b949e;
+      margin-bottom: 6px;
+    }
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #f0f6fc;
+      line-height: 1;
+    }
+    .card-unit {
+      font-size: 12px;
+      color: #8b949e;
+      margin-top: 2px;
+    }
+    .card-sub {
+      font-size: 12px;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+    .card-sub b { color: #c9d1d9; font-weight: 600; }
+    .card-dir-arrow {
+      font-size: 22px;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .wind-card .card-value  { color: #58a6ff; }
+    .swell-card .card-value { color: #3fb950; }
+    .tide-card .card-value  { color: #f0883e; }
+
+    /* ── Status banner (errors / loading) ───────────────────────── */
+    .status-bar {
+      margin: 8px 12px 0;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    .status-bar.error   { background: #2d1416; border: 1px solid #6e2b2b; color: #f85149; display: block; }
+    .status-bar.warning { background: #1c1a10; border: 1px solid #5c4a10; color: #e3b341; display: block; }
+    .status-bar.info    { background: #0d2035; border: 1px solid #1a4060; color: #58a6ff; display: block; }
+
+    /* ── Chart sections ─────────────────────────────────────────── */
+    .section {
+      margin: 16px 12px 0;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 8px;
+      border-bottom: 1px solid #21262d;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c9d1d9;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .section-badge {
+      font-size: 11px;
+      color: #8b949e;
+      background: #21262d;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .chart-wrap {
+      padding: 12px 10px 8px;
+      position: relative;
+      height: 180px;
+    }
+    .chart-wrap canvas { display: block; }
+
+    /* ── Legend ─────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      gap: 12px;
+      padding: 0 14px 10px;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .legend-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .legend-dash {
+      width: 16px; height: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── API key notice ─────────────────────────────────────────── */
+    .api-notice {
+      padding: 20px 16px;
+      text-align: center;
+      color: #8b949e;
+      font-size: 13px;
+    }
+    .api-notice a { color: #58a6ff; }
+
+    /* ── Footer ─────────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 24px 16px 8px;
+      font-size: 11px;
+      color: #484f58;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="site-name">🌊 <span>Mussel</span> Rock</div>
+      <div class="updated" id="updated-time">Loading…</div>
+    </div>
+    <button class="refresh-btn" id="refresh-btn" title="Refresh" onclick="loadAll()">↻</button>
+  </header>
+
+  <!-- Status bar -->
+  <div class="status-bar" id="status-bar"></div>
+
+  <!-- Current conditions cards -->
+  <div class="cards">
+    <!-- Wind -->
+    <div class="card wind-card">
+      <div class="card-label">Wind</div>
+      <span class="card-dir-arrow" id="wind-arrow">–</span>
+      <div class="card-value" id="wind-speed">–</div>
+      <div class="card-unit" id="wind-unit">–</div>
+      <div class="card-sub">G <b id="wind-gust">–</b></div>
+      <div class="card-sub" id="wind-dir-text">–</div>
+    </div>
+    <!-- Swell -->
+    <div class="card swell-card">
+      <div class="card-label">Swell</div>
+      <div style="font-size:22px; margin-bottom:4px;">🌊</div>
+      <div class="card-value" id="swell-height">–</div>
+      <div class="card-unit">m</div>
+      <div class="card-sub">T <b id="swell-period">–</b> s</div>
+      <div class="card-sub" id="swell-dir">–</div>
+    </div>
+    <!-- Tide -->
+    <div class="card tide-card">
+      <div class="card-label">Tide</div>
+      <div style="font-size:22px; margin-bottom:4px;" id="tide-arrow-icon">🌊</div>
+      <div class="card-value" id="tide-height">–</div>
+      <div class="card-unit">m</div>
+      <div class="card-sub" id="tide-trend">–</div>
+      <div class="card-sub" id="tide-next">–</div>
+    </div>
+  </div>
+
+  <!-- Wind Speed Chart -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Wind Speed</span>
+      <span class="section-badge" id="wind-badge">24 h</span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-wind"></canvas></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Avg</div>
+      <div class="legend-item"><div class="legend-dash" style="background:#f0883e"></div> Gust</div>
+      <div class="legend-item"><div class="legend-dash" style="background:#3fb950"></div> Min</div>
+    </div>
+  </div>
+
+  <!-- Wind Direction Chart -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Wind Direction</span>
+      <span class="section-badge">24 h</span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-dir"></canvas></div>
+  </div>
+
+  <!-- Swell Chart -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Swell</span>
+      <span class="section-badge">48 h</span>
+    </div>
+    <div class="chart-wrap" id="swell-wrap"><canvas id="chart-swell"></canvas></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Height (m)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Period (s)</div>
+    </div>
+  </div>
+
+  <!-- Tide Chart -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Tide</span>
+      <span class="section-badge">Today</span>
+    </div>
+    <div class="chart-wrap" id="tide-wrap"><canvas id="chart-tide"></canvas></div>
+    <div id="tide-notice" class="api-notice" style="display:none">
+      Tide data needs a free NIWA API key.<br>
+      <a href="https://developer.niwa.co.nz" target="_blank">Register at developer.niwa.co.nz</a>
+      then set <code>NIWA_KEY</code> in the CONFIG block.
+    </div>
+  </div>
+
+  <footer>
+    Mussel Rock Wind Station · <span id="footer-coords"></span>
+  </footer>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIG — edit these values before deploying
+   ═══════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  // Paste your Apps Script web app deployment URL here (from Extensions → Apps Script → Deploy)
+  GAS_URL:    'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+
+  // Free NIWA tides API key — register at https://developer.niwa.co.nz
+  // Leave '' to skip tide chart (a setup notice will be shown instead)
+  NIWA_KEY:   '',
+
+  // Station coordinates
+  LAT:        -36.773157,
+  LNG:        175.027363,
+
+  // Wind unit displayed: 'ms' = m/s  |  'kmh' = km/h  |  'kts' = knots
+  WIND_UNIT:  'ms',
+
+  // How many hours of wind history to fetch (max 168)
+  WIND_HOURS: 24,
+
+  // Auto-refresh interval in minutes (0 = disabled)
+  REFRESH_MIN: 5,
+
+  SITE_NAME:  'Mussel Rock',
+  TIMEZONE:   'Pacific/Auckland',
+};
+/* ═══════════════════════════════════════════════════════════════════ */
+
+const { DateTime } = luxon;
+
+/* ── Unit helpers ─────────────────────────────────────────────── */
+function toDisplaySpeed(ms) {
+  if (CONFIG.WIND_UNIT === 'kmh') return (ms * 3.6).toFixed(1);
+  if (CONFIG.WIND_UNIT === 'kts') return (ms * 1.94384).toFixed(1);
+  return Number(ms).toFixed(1);
+}
+function unitLabel() {
+  if (CONFIG.WIND_UNIT === 'kmh') return 'km/h';
+  if (CONFIG.WIND_UNIT === 'kts') return 'kts';
+  return 'm/s';
+}
+/* Compass bearing → arrow emoji */
+function bearingArrow(deg) {
+  const arrows = ['↑','↗','→','↘','↓','↙','←','↖'];
+  return arrows[Math.round(deg / 45) % 8];
+}
+/* Degrees → compass text */
+function deg2dir(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+/* ── Status bar ───────────────────────────────────────────────── */
+function setStatus(msg, type) {
+  const el = document.getElementById('status-bar');
+  el.className = 'status-bar ' + (type || 'info');
+  el.textContent = msg;
+}
+function clearStatus() {
+  document.getElementById('status-bar').className = 'status-bar';
+}
+
+/* ── Chart defaults ───────────────────────────────────────────── */
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#21262d';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+Chart.defaults.font.size = 11;
+const GRID = { color: '#21262d', tickColor: 'transparent' };
+const ADAPTOPTS = { locale: 'en-NZ' };
+
+function timeScaleOpts(unit, fmt) {
+  return {
+    type: 'time',
+    adapters: { date: { zone: CONFIG.TIMEZONE } },
+    time: { unit: unit, displayFormats: { hour: fmt || 'ha', day: 'EEE d' } },
+    grid: GRID,
+    ticks: { maxTicksLimit: 6, maxRotation: 0 },
+  };
+}
+
+let charts = {};
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+/* ── Wind chart ───────────────────────────────────────────────── */
+function renderWindChart(data) {
+  destroyChart('wind');
+  const ctx = document.getElementById('chart-wind').getContext('2d');
+  const labels = data.map(d => d.t);
+  const avg  = data.map(d => toDisplaySpeed(d.ws));
+  const gust = data.map(d => toDisplaySpeed(d.wmax));
+  const min  = data.map(d => toDisplaySpeed(d.wmin));
+
+  charts.wind = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Gust',
+          data: gust,
+          borderColor: '#f0883e',
+          backgroundColor: 'rgba(240,136,62,0.08)',
+          borderWidth: 1.5,
+          borderDash: [4,2],
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          order: 3,
+        },
+        {
+          label: 'Avg',
+          data: avg,
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,0.15)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: 'origin',
+          order: 1,
+        },
+        {
+          label: 'Min',
+          data: min,
+          borderColor: '#3fb950',
+          borderWidth: 1,
+          borderDash: [3,3],
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          order: 2,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} ${unitLabel()}`
+          }
+        }
+      },
+      scales: {
+        x: timeScaleOpts('hour'),
+        y: {
+          grid: GRID,
+          beginAtZero: true,
+          ticks: {
+            callback: v => v + ' ' + unitLabel(),
+            maxTicksLimit: 5,
+          }
+        }
+      }
+    }
+  });
+}
+
+/* ── Direction chart ──────────────────────────────────────────── */
+function renderDirChart(data) {
+  destroyChart('dir');
+  const ctx = document.getElementById('chart-dir').getContext('2d');
+
+  // Filter out calm/zero readings for direction (wmax === 0 means calm)
+  const pts = data
+    .filter(d => d.wmax > 0)
+    .map(d => ({ x: d.t, y: d.wd }));
+
+  charts.dir = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Direction',
+        data: pts,
+        backgroundColor: 'rgba(88,166,255,0.6)',
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const deg = ctx.parsed.y;
+              return `${deg}° ${deg2dir(deg)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: timeScaleOpts('hour'),
+        y: {
+          grid: GRID,
+          min: 0, max: 360,
+          ticks: {
+            maxTicksLimit: 5,
+            callback: v => {
+              const map = { 0:'N', 90:'E', 180:'S', 270:'W', 360:'N' };
+              return map[v] !== undefined ? map[v] : '';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+/* ── Swell chart ──────────────────────────────────────────────── */
+function renderSwellChart(times, heights, periods) {
+  destroyChart('swell');
+  const ctx = document.getElementById('chart-swell').getContext('2d');
+
+  charts.swell = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [
+        {
+          label: 'Height (m)',
+          data: heights,
+          borderColor: '#3fb950',
+          backgroundColor: 'rgba(63,185,80,0.15)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.4,
+          fill: 'origin',
+          yAxisID: 'yH',
+          order: 1,
+        },
+        {
+          label: 'Period (s)',
+          data: periods,
+          borderColor: '#58a6ff',
+          borderWidth: 1.5,
+          borderDash: [4,2],
+          pointRadius: 0,
+          tension: 0.4,
+          fill: false,
+          yAxisID: 'yP',
+          order: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: timeScaleOpts('hour'),
+        yH: {
+          grid: GRID,
+          beginAtZero: true,
+          position: 'left',
+          ticks: { maxTicksLimit: 4, callback: v => v.toFixed(1) + ' m' }
+        },
+        yP: {
+          grid: { display: false },
+          beginAtZero: true,
+          position: 'right',
+          ticks: { maxTicksLimit: 4, callback: v => v + ' s' }
+        }
+      }
+    }
+  });
+}
+
+/* ── Tide chart ───────────────────────────────────────────────── */
+function renderTideChart(times, heights, nowIso) {
+  destroyChart('tide');
+  const ctx = document.getElementById('chart-tide').getContext('2d');
+
+  // Vertical "now" line annotation via a dummy dataset
+  const nowMs = new Date(nowIso).getTime();
+  const minH  = Math.min(...heights);
+  const maxH  = Math.max(...heights);
+
+  charts.tide = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [
+        {
+          label: 'Tide (m)',
+          data: heights,
+          borderColor: '#f0883e',
+          backgroundColor: 'rgba(240,136,62,0.15)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.4,
+          fill: 'origin',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        annotation: undefined, // no annotation plugin loaded; we draw manually
+      },
+      scales: {
+        x: timeScaleOpts('hour', 'ha'),
+        y: {
+          grid: GRID,
+          ticks: { maxTicksLimit: 4, callback: v => v.toFixed(1) + ' m' }
+        }
+      }
+    }
+  });
+}
+
+/* ── Fetch wind data from Apps Script ─────────────────────────── */
+async function fetchWind() {
+  const url = `${CONFIG.GAS_URL}?cmd=get_data&hours=${CONFIG.WIND_HOURS}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`GAS HTTP ${r.status}`);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'GAS error');
+  return j.data;
+}
+
+/* ── Fetch swell from Open-Meteo Marine (free, no key) ────────── */
+async function fetchSwell() {
+  const url = [
+    'https://marine-api.open-meteo.com/v1/marine',
+    `?latitude=${CONFIG.LAT}&longitude=${CONFIG.LNG}`,
+    '&hourly=wave_height,wave_period,wave_direction',
+    `&timezone=${encodeURIComponent(CONFIG.TIMEZONE)}`,
+    '&past_days=1&forecast_days=2',
+  ].join('');
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Open-Meteo HTTP ${r.status}`);
+  return r.json();
+}
+
+/* ── Fetch tides from NIWA ────────────────────────────────────── */
+async function fetchTides() {
+  if (!CONFIG.NIWA_KEY) return null;
+  const today = DateTime.now().setZone(CONFIG.TIMEZONE).toISODate();
+  const url = [
+    'https://api.niwa.co.nz/tides/data',
+    `?lat=${CONFIG.LAT}&long=${CONFIG.LNG}`,
+    '&numberOfDays=2',
+    `&startDate=${today}`,
+    '&datum=MSL',
+    `&apikey=${CONFIG.NIWA_KEY}`,
+  ].join('');
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`NIWA HTTP ${r.status}`);
+  return r.json();
+}
+
+/* ── Find next high / low tide ────────────────────────────────── */
+function nextTideEvent(times, heights) {
+  const nowMs = Date.now();
+  for (let i = 1; i < times.length - 1; i++) {
+    const t = new Date(times[i]).getTime();
+    if (t < nowMs) continue;
+    const isHigh = heights[i] >= heights[i-1] && heights[i] >= heights[i+1];
+    const isLow  = heights[i] <= heights[i-1] && heights[i] <= heights[i+1];
+    if (isHigh || isLow) {
+      const label = isHigh ? 'HW' : 'LW';
+      const time  = DateTime.fromISO(times[i]).setZone(CONFIG.TIMEZONE).toFormat('h:mma');
+      return `${label} ${time} (${heights[i].toFixed(1)}m)`;
+    }
+  }
+  return '–';
+}
+
+/* ── Current tide height & trend ─────────────────────────────── */
+function currentTideInfo(times, heights) {
+  const nowMs = Date.now();
+  let best = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (Math.abs(new Date(times[i]).getTime() - nowMs) <
+        Math.abs(new Date(times[best]).getTime() - nowMs)) best = i;
+  }
+  const h = heights[best];
+  const rising = best < heights.length - 1 && heights[best + 1] > h;
+  return { h, trend: rising ? '↑ Rising' : '↓ Falling', icon: rising ? '🌊' : '🏖️' };
+}
+
+/* ── Update current conditions cards ─────────────────────────── */
+function updateWindCard(data) {
+  if (!data || !data.length) return;
+  const latest = data[data.length - 1];
+  document.getElementById('wind-arrow').textContent     = bearingArrow(latest.wd);
+  document.getElementById('wind-speed').textContent     = toDisplaySpeed(latest.ws);
+  document.getElementById('wind-unit').textContent      = unitLabel();
+  document.getElementById('wind-gust').textContent      = toDisplaySpeed(latest.wmax);
+  document.getElementById('wind-dir-text').textContent  = latest.wdt || deg2dir(latest.wd);
+}
+
+function updateSwellCard(swell) {
+  const now = new Date().toISOString();
+  const times = swell.hourly.time;
+  let best = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (Math.abs(new Date(times[i]) - new Date(now)) <
+        Math.abs(new Date(times[best]) - new Date(now))) best = i;
+  }
+  document.getElementById('swell-height').textContent = swell.hourly.wave_height[best].toFixed(1);
+  document.getElementById('swell-period').textContent = swell.hourly.wave_period[best].toFixed(0);
+  const d = swell.hourly.wave_direction[best];
+  document.getElementById('swell-dir').textContent    = deg2dir(d) + ' ' + Math.round(d) + '°';
+}
+
+function updateTideCard(times, heights) {
+  const info = currentTideInfo(times, heights);
+  const next = nextTideEvent(times, heights);
+  document.getElementById('tide-height').textContent   = info.h.toFixed(1);
+  document.getElementById('tide-trend').textContent    = info.trend;
+  document.getElementById('tide-next').textContent     = next;
+  document.getElementById('tide-arrow-icon').textContent = info.icon;
+}
+
+/* ── Main load function ───────────────────────────────────────── */
+async function loadAll() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  clearStatus();
+
+  const now = DateTime.now().setZone(CONFIG.TIMEZONE);
+  document.getElementById('updated-time').textContent = 'Loading…';
+  document.getElementById('footer-coords').textContent =
+    `${Math.abs(CONFIG.LAT).toFixed(4)}°S ${CONFIG.LNG.toFixed(4)}°E`;
+
+  // Fetch all sources in parallel; handle each independently
+  const [windResult, swellResult, tideResult] = await Promise.allSettled([
+    fetchWind(),
+    fetchSwell(),
+    fetchTides(),
+  ]);
+
+  const errors = [];
+
+  /* Wind */
+  if (windResult.status === 'fulfilled' && windResult.value && windResult.value.length) {
+    const data = windResult.value;
+    updateWindCard(data);
+    renderWindChart(data);
+    renderDirChart(data);
+    document.getElementById('wind-badge').textContent = CONFIG.WIND_HOURS + ' h';
+  } else {
+    errors.push('Wind data unavailable — check GAS_URL in CONFIG');
+    console.error('Wind fetch error:', windResult.reason || 'no data');
+  }
+
+  /* Swell */
+  if (swellResult.status === 'fulfilled' && swellResult.value) {
+    const s = swellResult.value;
+    updateSwellCard(s);
+    renderSwellChart(s.hourly.time, s.hourly.wave_height, s.hourly.wave_period);
+  } else {
+    errors.push('Swell data unavailable (Open-Meteo)');
+    console.error('Swell fetch error:', swellResult.reason);
+  }
+
+  /* Tide */
+  if (tideResult.status === 'fulfilled' && tideResult.value) {
+    const t = tideResult.value;
+    const times   = t.values.map(v => v.time);
+    const heights = t.values.map(v => v.value);
+    updateTideCard(times, heights);
+    renderTideChart(times, heights, new Date().toISOString());
+    document.getElementById('tide-wrap').style.display = '';
+    document.getElementById('tide-notice').style.display = 'none';
+  } else if (!CONFIG.NIWA_KEY) {
+    document.getElementById('tide-wrap').style.display = 'none';
+    document.getElementById('tide-notice').style.display = 'block';
+  } else {
+    errors.push('Tide data unavailable (NIWA API)');
+    console.error('Tide fetch error:', tideResult.reason);
+  }
+
+  /* Timestamp + status */
+  document.getElementById('updated-time').textContent =
+    'Updated ' + now.toFormat('h:mm a');
+
+  if (errors.length) {
+    setStatus('⚠ ' + errors.join(' · '), 'warning');
+  }
+
+  btn.classList.remove('spinning');
+}
+
+/* ── Auto-refresh ─────────────────────────────────────────────── */
+if (CONFIG.REFRESH_MIN > 0) {
+  setInterval(loadAll, CONFIG.REFRESH_MIN * 60 * 1000);
+}
+
+/* ── Boot ─────────────────────────────────────────────────────── */
+loadAll();
+</script>
+</body>
+</html>
