@@ -275,6 +275,7 @@
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Height (m)</div>
       <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Period (s)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(210,153,255,0.85)"></div> Direction</div>
     </div>
   </div>
 
@@ -588,15 +589,7 @@ function renderSwellChart(times, heights, periods, directions) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-          legend: {
-            display: true,
-            labels: {
-              color: '#8b949e',
-              boxWidth: 20,
-              padding: 10,
-              font: { size: 11 },
-            }
-          }
+          legend: { display: false }
         },
       scales: {
         x: xAxis,
