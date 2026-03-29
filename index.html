@@ -533,9 +533,14 @@ function renderDirChart(data) {
 }
 
 /* ── Swell chart ──────────────────────────────────────────────── */
-function renderSwellChart(times, heights, periods) {
+function renderSwellChart(times, heights, periods, directions) {
   destroyChart('swell');
   const ctx = document.getElementById('chart-swell').getContext('2d');
+
+  // Shared window with tide chart so NOW lines land at the same position
+  const winMin = Date.now() - 12 * 3600e3;
+  const winMax = Date.now() + 36 * 3600e3;
+  const xAxis  = Object.assign(timeScaleOpts('hour'), { min: winMin, max: winMax });
 
   charts.swell = new Chart(ctx, {
     type: 'line',
@@ -563,18 +568,28 @@ function renderSwellChart(times, heights, periods) {
           pointRadius: 0,
           tension: 0.4,
           fill: false,
-          yAxisID: 'yP',
+          yAxisID: 'yP',   // hidden axis — line still shows
           order: 2,
+        },
+        {
+          label: 'Direction',
+          data: directions,
+          borderColor: 'rgba(210,153,255,0.75)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          yAxisID: 'yD',
+          order: 3,
         }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
       plugins: { legend: { display: false } },
       scales: {
-        x: timeScaleOpts('hour'),
+        x: xAxis,
         yH: {
           grid: GRID,
           beginAtZero: true,
@@ -582,10 +597,21 @@ function renderSwellChart(times, heights, periods) {
           ticks: { maxTicksLimit: 4, callback: v => v.toFixed(1) + ' m' }
         },
         yP: {
-          grid: { display: false },
+          display: false,   // hide period axis ticks; period line still renders
           beginAtZero: true,
+        },
+        yD: {
+          grid: { display: false },
+          min: 0,
+          max: 360,
           position: 'right',
-          ticks: { maxTicksLimit: 4, callback: v => v + ' s' }
+          ticks: {
+            values: [0, 45, 90, 135, 180, 225, 270, 315, 360],
+            callback: v => {
+              const map = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW',360:'N'};
+              return map[v] !== undefined ? map[v] : '';
+            }
+          }
         }
       }
     }
@@ -628,7 +654,10 @@ function renderTideChart(times, heights, nowIso) {
         annotation: undefined, // no annotation plugin loaded; we draw manually
       },
       scales: {
-        x: timeScaleOpts('hour', 'ha'),
+        x: Object.assign(timeScaleOpts('hour', 'ha'), {
+             min: Date.now() - 12 * 3600e3,
+             max: Date.now() + 36 * 3600e3
+           }),
         y: {
           grid: GRID,
           ticks: { maxTicksLimit: 4, callback: v => v.toFixed(1) + ' m' }
@@ -809,7 +838,7 @@ async function loadAll() {
   if (swellResult.status === 'fulfilled' && swellResult.value) {
     const s = swellResult.value;
     updateSwellCard(s);
-    renderSwellChart(s.hourly.time, s.hourly.wave_height, s.hourly.wave_period);
+    renderSwellChart(s.hourly.time, s.hourly.wave_height, s.hourly.wave_period, s.hourly.wave_direction);
   } else {
     errors.push('Swell data unavailable (Open-Meteo)');
     console.error('Swell fetch error:', swellResult.reason);
