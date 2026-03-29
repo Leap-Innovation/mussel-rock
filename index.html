@@ -587,7 +587,17 @@ function renderSwellChart(times, heights, periods, directions) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: {
+          legend: {
+            display: true,
+            labels: {
+              color: '#8b949e',
+              boxWidth: 20,
+              padding: 10,
+              font: { size: 11 },
+            }
+          }
+        },
       scales: {
         x: xAxis,
         yH: {
@@ -597,16 +607,21 @@ function renderSwellChart(times, heights, periods, directions) {
           ticks: { maxTicksLimit: 4, callback: v => v.toFixed(1) + ' m' }
         },
         yP: {
-          display: false,   // hide period axis ticks; period line still renders
+          grid: { display: false },
           beginAtZero: true,
+          position: 'right',
+          ticks: { maxTicksLimit: 4, callback: v => v + ' s' }
         },
         yD: {
           grid: { display: false },
           min: 0,
           max: 360,
           position: 'right',
+          // Force exactly the 8 compass-point ticks so S, E & W always appear
+          afterBuildTicks: axis => {
+            axis.ticks = [0, 45, 90, 135, 180, 225, 270, 315, 360].map(v => ({ value: v }));
+          },
           ticks: {
-            values: [0, 45, 90, 135, 180, 225, 270, 315, 360],
             callback: v => {
               const map = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW',360:'N'};
               return map[v] !== undefined ? map[v] : '';
@@ -694,12 +709,13 @@ async function fetchSwell() {
 /* ── Fetch tides from NIWA ────────────────────────────────────── */
 async function fetchTides() {
   if (!CONFIG.NIWA_KEY) return null;
-  const today = DateTime.now().setZone(CONFIG.TIMEZONE).toISODate();
+  // Start from yesterday so the chart's −12 h window is filled with tide history
+  const yesterday = DateTime.now().setZone(CONFIG.TIMEZONE).minus({ days: 1 }).toISODate();
   const url = [
     'https://api.niwa.co.nz/tides/data',
     `?lat=${CONFIG.LAT}&long=${CONFIG.LNG}`,
-    '&numberOfDays=2',
-    `&startDate=${today}`,
+    '&numberOfDays=3',
+    `&startDate=${yesterday}`,
     '&datum=MSL',
     `&apikey=${CONFIG.NIWA_KEY}`,
   ].join('');
