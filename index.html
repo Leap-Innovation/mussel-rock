@@ -342,6 +342,7 @@ Chart.defaults.color = '#8b949e';
 Chart.defaults.borderColor = '#21262d';
 Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
+Chart.defaults.plugins.tooltip.enabled = false;
 const GRID = { color: '#21262d', tickColor: 'transparent' };
 const ADAPTOPTS = { locale: 'en-NZ' };
 
@@ -723,6 +724,11 @@ function updateWindCard(data) {
   document.getElementById('wind-arrow').textContent     = bearingArrow(latest.wd);
   document.getElementById('wind-speed').textContent     = ma10;
   document.getElementById('wind-unit').textContent      = unitLabel() + ' (10m)';
+  // Colour-code wind speed: green >15 kts, orange 10–15, red <10
+  // ma10 is already in display units (kts when WIND_UNIT='kts')
+  const ma10Num = parseFloat(ma10);
+  document.getElementById('wind-speed').style.color =
+    ma10Num > 15 ? '#3fb950' : ma10Num >= 10 ? '#f0883e' : '#f85149';
   const rawGusts = data.slice(-MA_WINDOW).map(d => parseFloat(toDisplaySpeed(d.wmax)));
   const maGust   = (rawGusts.reduce((s, v) => s + v, 0) / rawGusts.length).toFixed(1);
   document.getElementById('wind-gust').textContent      = maGust;
@@ -750,6 +756,21 @@ function updateTideCard(times, heights) {
   document.getElementById('tide-trend').textContent    = info.trend;
   document.getElementById('tide-next').textContent     = next;
   document.getElementById('tide-arrow-icon').textContent = info.icon;
+
+  // Colour-code tide height: find nearest HW (peak) and measure minutes away
+  const nowMs = Date.now();
+  let minMinsToHW = Infinity;
+  for (let i = 1; i < times.length - 1; i++) {
+    const isHigh = heights[i] >= heights[i-1] && heights[i] >= heights[i+1];
+    if (isHigh) {
+      const minsAway = Math.abs(tideMs(times[i]) - nowMs) / 60000;
+      if (minsAway < minMinsToHW) minMinsToHW = minsAway;
+    }
+  }
+  document.getElementById('tide-height').style.color =
+    minMinsToHW <= 60  ? '#3fb950' :   // green  — within 1 hr of HW
+    minMinsToHW <= 120 ? '#f0883e' :   // orange — within 2 hrs
+                         '#f85149';    // red    — more than 2 hrs away
 }
 
 /* ── Main load function ───────────────────────────────────────── */
