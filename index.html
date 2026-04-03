@@ -764,7 +764,10 @@ function nextTideEvent(times, heights) {
     if (isHigh || isLow) {
       const label = isHigh ? 'HW' : 'LW';
       const time  = DateTime.fromISO(times[i]).setZone(CONFIG.TIMEZONE).toFormat('h:mma');
-      return `${label} ${time} (${heights[i].toFixed(1)}m)`;
+      const minsAway = Math.round((tideMs(times[i]) - nowMs) / 60000);
+      const h = Math.floor(minsAway / 60), m = minsAway % 60;
+      const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      return `${label} in ${countdown} (${heights[i].toFixed(1)}m)`;
     }
   }
   return '–';
