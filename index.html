@@ -773,17 +773,31 @@ function nextTideEvent(times, heights) {
 /* ── Current tide height & trend ─────────────────────────────── */
 function currentTideInfo(times, heights) {
   const nowMs = Date.now();
-  let best = 0;
+
+  // Find the samples immediately before and after now by actual timestamp,
+  // regardless of whether the NIWA data is sorted chronologically or not.
+  let before = -1, after = -1;
   for (let i = 0; i < times.length; i++) {
-    if (Math.abs(tideMs(times[i]) - nowMs) < Math.abs(tideMs(times[best]) - nowMs))
-      best = i;
+    const t = tideMs(times[i]);
+    if (t <= nowMs) {
+      if (before === -1 || t > tideMs(times[before])) before = i;
+    } else {
+      if (after  === -1 || t < tideMs(times[after]))  after  = i;
+    }
   }
-  const h = heights[best];
-  // Compare the sample before and after `best` for a robust trend signal.
-  // Using only heights[best+1] > h can flip at the exact sample nearest a peak.
-  const prev = best > 0               ? heights[best - 1] : h;
-  const next = best < heights.length - 1 ? heights[best + 1] : h;
-  const rising = next > prev;
+
+  // Interpolate height at the exact current moment
+  let h;
+  if (before !== -1 && after !== -1) {
+    const t0 = tideMs(times[before]), t1 = tideMs(times[after]);
+    const frac = (nowMs - t0) / (t1 - t0);
+    h = heights[before] + frac * (heights[after] - heights[before]);
+  } else {
+    h = before !== -1 ? heights[before] : heights[after];
+  }
+
+  // Rising if the next real sample is higher than the previous real sample
+  const rising = before !== -1 && after !== -1 && heights[after] > heights[before];
   return { h, trend: rising ? '↑ Rising' : '↓ Falling', icon: rising ? '🌊' : '🏖️' };
 }
 
