@@ -511,10 +511,8 @@ function renderDirChart(data) {
     lineData.push({ x: active[i].t, y: active[i].wd });
   }
 
-  // Auto-scale to data range with 20° padding.
-  const degs = active.map(d => d.wd);
-  const dMin = degs.length ? Math.max(0,   Math.min(...degs) - 20) : 0;
-  const dMax = degs.length ? Math.min(360, Math.max(...degs) + 20) : 360;
+  // Fixed 0–360 scale so all cardinal points are always visible.
+  const dMin = 0, dMax = 360;
 
   charts.dir = new Chart(ctx, {
     type: 'line',
@@ -551,9 +549,10 @@ function renderDirChart(data) {
           grid: GRID,
           min: dMin,
           max: dMax,
+          afterBuildTicks: axis => {
+            axis.ticks = [0,45,90,135,180,225,270,315,360].map(v => ({ value: v }));
+          },
           ticks: {
-            // Show a label at every 45° step that falls within the visible range
-            values: [0,45,90,135,180,225,270,315,360].filter(v => v >= dMin && v <= dMax),
             callback: v => {
               const map = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW',360:'N'};
               return map[v] !== undefined ? map[v] : '';
@@ -780,7 +779,11 @@ function currentTideInfo(times, heights) {
       best = i;
   }
   const h = heights[best];
-  const rising = best < heights.length - 1 && heights[best + 1] > h;
+  // Compare the sample before and after `best` for a robust trend signal.
+  // Using only heights[best+1] > h can flip at the exact sample nearest a peak.
+  const prev = best > 0               ? heights[best - 1] : h;
+  const next = best < heights.length - 1 ? heights[best + 1] : h;
+  const rising = next > prev;
   return { h, trend: rising ? '↑ Rising' : '↓ Falling', icon: rising ? '🌊' : '🏖️' };
 }
 
@@ -791,8 +794,10 @@ function updateWindCard(data) {
   // Speed card shows 10-min moving average of the raw avg speed
   const raw10 = data.slice(-MA_WINDOW).map(d => parseFloat(toDisplaySpeed(d.ws)));
   const ma10  = (raw10.reduce((s, v) => s + v, 0) / raw10.length).toFixed(1);
-  // Rotate compass needle to wind-from bearing
-  document.getElementById('wind-needle').setAttribute('transform', `rotate(${latest.wd})`);
+  // Rotate needle to wind-TO bearing (+180° from meteorological FROM convention)
+  // Arrow tip points in the direction the wind is blowing toward
+  const toDir = (latest.wd + 180) % 360;
+  document.getElementById('wind-needle').setAttribute('transform', `rotate(${toDir})`);
   // Speed & unit in centre of SVG dial
   const ma10Num = parseFloat(ma10);
   const speedColour = ma10Num > 15 ? '#3fb950' : ma10Num >= 10 ? '#f0883e' : '#f85149';
@@ -803,7 +808,9 @@ function updateWindCard(data) {
   const rawGusts = data.slice(-MA_WINDOW).map(d => parseFloat(toDisplaySpeed(d.wmax)));
   const maGust   = (rawGusts.reduce((s, v) => s + v, 0) / rawGusts.length).toFixed(1);
   document.getElementById('wind-gust').textContent      = maGust;
-  document.getElementById('wind-dir-text').textContent  = latest.wdt || deg2dir(latest.wd);
+  // Show "FROM NNE" so the text stays unambiguous alongside the downwind arrow
+  const fromLabel = latest.wdt || deg2dir(latest.wd);
+  document.getElementById('wind-dir-text').textContent  = 'from ' + fromLabel;
 }
 
 function updateSwellCard(swell) {
