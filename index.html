@@ -99,10 +99,11 @@
       margin-top: 4px;
     }
     .card-sub b { color: #c9d1d9; font-weight: 600; }
-    .card-dir-arrow {
-      font-size: 22px;
+    .compass-svg {
+      width: 100%;
+      height: auto;
       display: block;
-      margin-bottom: 2px;
+      margin: 2px auto 2px;
     }
     .wind-card .card-value  { color: #58a6ff; }
     .swell-card .card-value { color: #3fb950; }
@@ -217,9 +218,40 @@
     <!-- Wind -->
     <div class="card wind-card">
       <div class="card-label">Wind</div>
-      <span class="card-dir-arrow" id="wind-arrow">–</span>
-      <div class="card-value" id="wind-speed">–</div>
-      <div class="card-unit" id="wind-unit">–</div>
+      <!-- Compass dial: needle rotates to wind-from bearing; speed in centre -->
+      <svg class="compass-svg" viewBox="-48 -48 96 96">
+        <!-- Ring -->
+        <circle r="43" fill="#0d1117"/>
+        <circle r="43" fill="none" stroke="#21262d" stroke-width="1.5"/>
+        <!-- 8-point ticks -->
+        <line x1="0"    y1="-43" x2="0"    y2="-36" stroke="#8b949e" stroke-width="1.5"/>
+        <line x1="30.4" y1="-30.4" x2="25.5" y2="-25.5" stroke="#21262d" stroke-width="1"/>
+        <line x1="43"   y1="0"   x2="36"   y2="0"   stroke="#21262d" stroke-width="1"/>
+        <line x1="30.4" y1="30.4" x2="25.5" y2="25.5" stroke="#21262d" stroke-width="1"/>
+        <line x1="0"    y1="43"  x2="0"    y2="36"  stroke="#21262d" stroke-width="1"/>
+        <line x1="-30.4" y1="30.4" x2="-25.5" y2="25.5" stroke="#21262d" stroke-width="1"/>
+        <line x1="-43"  y1="0"  x2="-36"  y2="0"   stroke="#21262d" stroke-width="1"/>
+        <line x1="-30.4" y1="-30.4" x2="-25.5" y2="-25.5" stroke="#21262d" stroke-width="1"/>
+        <!-- Cardinal labels -->
+        <text x="0"   y="-27" text-anchor="middle" font-size="9" font-weight="700" fill="#c9d1d9" font-family="-apple-system,sans-serif">N</text>
+        <text x="31"  y="4"   text-anchor="middle" font-size="7" fill="#8b949e" font-family="-apple-system,sans-serif">E</text>
+        <text x="0"   y="38"  text-anchor="middle" font-size="7" fill="#8b949e" font-family="-apple-system,sans-serif">S</text>
+        <text x="-31" y="4"   text-anchor="middle" font-size="7" fill="#8b949e" font-family="-apple-system,sans-serif">W</text>
+        <!-- Rotating needle -->
+        <g id="wind-needle" transform="rotate(0)">
+          <polygon points="0,-35 4.5,-14 0,-20 -4.5,-14" fill="#58a6ff"/>
+          <polygon points="0,22 3.5,12 -3.5,12"           fill="#30363d"/>
+        </g>
+        <!-- Centre disc so needle doesn't obscure speed -->
+        <circle r="18" fill="rgba(13,17,23,0.88)"/>
+        <!-- Speed & unit in centre -->
+        <text id="wind-speed" x="0" y="4" text-anchor="middle" dominant-baseline="middle"
+              font-size="17" font-weight="700" fill="#f0f6fc"
+              font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">–</text>
+        <text id="wind-unit" x="0" y="15" text-anchor="middle"
+              font-size="6" fill="#8b949e"
+              font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">–</text>
+      </svg>
       <div class="card-sub">G <b id="wind-gust">–</b></div>
       <div class="card-sub" id="wind-dir-text">–</div>
     </div>
@@ -759,14 +791,15 @@ function updateWindCard(data) {
   // Speed card shows 10-min moving average of the raw avg speed
   const raw10 = data.slice(-MA_WINDOW).map(d => parseFloat(toDisplaySpeed(d.ws)));
   const ma10  = (raw10.reduce((s, v) => s + v, 0) / raw10.length).toFixed(1);
-  document.getElementById('wind-arrow').textContent     = bearingArrow(latest.wd);
-  document.getElementById('wind-speed').textContent     = ma10;
-  document.getElementById('wind-unit').textContent      = unitLabel() + ' (10m)';
-  // Colour-code wind speed: green >15 kts, orange 10–15, red <10
-  // ma10 is already in display units (kts when WIND_UNIT='kts')
+  // Rotate compass needle to wind-from bearing
+  document.getElementById('wind-needle').setAttribute('transform', `rotate(${latest.wd})`);
+  // Speed & unit in centre of SVG dial
   const ma10Num = parseFloat(ma10);
-  document.getElementById('wind-speed').style.color =
-    ma10Num > 15 ? '#3fb950' : ma10Num >= 10 ? '#f0883e' : '#f85149';
+  const speedColour = ma10Num > 15 ? '#3fb950' : ma10Num >= 10 ? '#f0883e' : '#f85149';
+  const speedEl = document.getElementById('wind-speed');
+  speedEl.textContent = ma10;
+  speedEl.setAttribute('fill', speedColour);
+  document.getElementById('wind-unit').textContent = unitLabel();
   const rawGusts = data.slice(-MA_WINDOW).map(d => parseFloat(toDisplaySpeed(d.wmax)));
   const maGust   = (rawGusts.reduce((s, v) => s + v, 0) / rawGusts.length).toFixed(1);
   document.getElementById('wind-gust').textContent      = maGust;
