@@ -754,23 +754,46 @@ function tideMs(isoStr) {
   return DateTime.fromISO(isoStr).toMillis();
 }
 
-/* ── Find next high / low tide ────────────────────────────────── */
+/* ── Tide phase label ─────────────────────────────────────────── */
 function nextTideEvent(times, heights) {
   const nowMs = Date.now();
+
+  // Build a list of all HT/LT turning points from the NIWA data
+  const events = [];
   for (let i = 1; i < times.length - 1; i++) {
-    if (tideMs(times[i]) < nowMs) continue;
     const isHigh = heights[i] >= heights[i-1] && heights[i] >= heights[i+1];
     const isLow  = heights[i] <= heights[i-1] && heights[i] <= heights[i+1];
-    if (isHigh || isLow) {
-      const label = isHigh ? 'HW' : 'LW';
-      const time  = DateTime.fromISO(times[i]).setZone(CONFIG.TIMEZONE).toFormat('h:mma');
-      const minsAway = Math.round((tideMs(times[i]) - nowMs) / 60000);
-      const h = Math.floor(minsAway / 60), m = minsAway % 60;
-      const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
-      return `${label} in ${countdown} (${heights[i].toFixed(1)}m)`;
-    }
+    if (isHigh || isLow)
+      events.push({ t: tideMs(times[i]), h: heights[i], type: isHigh ? 'HT' : 'LT' });
   }
-  return '–';
+  if (events.length < 2) return '–';
+
+  // Find the turning points immediately before and after now
+  let prevIdx = -1, nextIdx = -1;
+  for (let i = 0; i < events.length; i++) {
+    if (events[i].t <= nowMs) prevIdx = i;
+    else if (nextIdx === -1) nextIdx = i;
+  }
+  if (prevIdx === -1 || nextIdx === -1) return '–';
+
+  const prev = events[prevIdx];
+  const next = events[nextIdx];
+
+  // Format a duration in milliseconds as "Xh Ym" or "Ym"
+  const fmt = ms => {
+    const m = Math.round(Math.abs(ms) / 60000);
+    const h = Math.floor(m / 60), mins = m % 60;
+    return h > 0 ? `${h}h ${mins}m` : `${mins}m`;
+  };
+
+  // Split the period at the midpoint — first half shows "Xh Ym after PREV",
+  // second half shows "Xh Ym until NEXT"
+  const midMs = (prev.t + next.t) / 2;
+  if (nowMs < midMs) {
+    return `${fmt(nowMs - prev.t)} after ${prev.type}`;
+  } else {
+    return `${fmt(next.t - nowMs)} until ${next.type}`;
+  }
 }
 
 /* ── Current tide height & trend ─────────────────────────────── */
