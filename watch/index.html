@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=184, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="theme-color" content="#000">
+  <title>Wind</title>
+  <script src="../config.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 184px;
+      height: 224px;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Circular watch face */
+    .face {
+      width: 176px;
+      height: 176px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #1a1a2e 0%, #000 70%);
+      border: 2px solid #333;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+
+    /* Speed — dominant centre number */
+    .speed {
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -2px;
+      color: #58a6ff;
+      transition: color 0.4s;
+    }
+    .speed.green  { color: #3fb950; }
+    .speed.orange { color: #f0883e; }
+    .speed.red    { color: #f85149; }
+
+    .unit {
+      font-size: 11px;
+      color: #666;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: -2px;
+    }
+
+    /* Direction text */
+    .dir-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c9d1d9;
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Gust row */
+    .gust-row {
+      font-size: 10px;
+      color: #8b949e;
+      margin-top: 3px;
+    }
+    .gust-row span { color: #f0883e; font-weight: 600; }
+
+    /* Compass needle — absolute positioned SVG */
+    .compass-ring {
+      position: absolute;
+      top: 0; left: 0;
+      width: 176px;
+      height: 176px;
+      pointer-events: none;
+    }
+
+    /* Updated time — very bottom of face */
+    .updated {
+      position: absolute;
+      bottom: 22px;
+      font-size: 8px;
+      color: #444;
+      letter-spacing: 0.3px;
+    }
+
+    /* Error state */
+    .error-msg {
+      font-size: 10px;
+      color: #f85149;
+      text-align: center;
+      padding: 0 16px;
+      line-height: 1.4;
+    }
+
+    /* Fade-in on data load */
+    .face { opacity: 0; transition: opacity 0.4s; }
+    .face.ready { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="face" id="face">
+  <!-- Compass ring drawn in SVG; needle rotated by JS -->
+  <svg class="compass-ring" viewBox="0 0 176 176">
+    <!-- Outer tick ring -->
+    <g stroke="#333" stroke-width="1">
+      <!-- 8 major ticks (N NE E SE S SW W NW) -->
+      <line x1="88" y1="6"  x2="88" y2="14" />  <!-- N -->
+      <line x1="88" y1="162" x2="88" y2="170" />  <!-- S -->
+      <line x1="6"  y1="88" x2="14" y2="88"  />  <!-- W -->
+      <line x1="162" y1="88" x2="170" y2="88" />  <!-- E -->
+      <!-- 45° ticks -->
+      <line x1="33.4" y1="33.4" x2="39.1" y2="39.1" />
+      <line x1="136.9" y1="33.4" x2="131.2" y2="39.1" />
+      <line x1="33.4" y1="142.6" x2="39.1" y2="136.9" />
+      <line x1="136.9" y1="142.6" x2="131.2" y2="136.9" />
+    </g>
+    <!-- Cardinal labels -->
+    <text x="88"  y="21"   text-anchor="middle" fill="#888" font-size="9" font-family="-apple-system,sans-serif" font-weight="600">N</text>
+    <text x="88"  y="165"  text-anchor="middle" fill="#555" font-size="8" font-family="-apple-system,sans-serif">S</text>
+    <text x="163" y="92"   text-anchor="middle" fill="#555" font-size="8" font-family="-apple-system,sans-serif">E</text>
+    <text x="13"  y="92"   text-anchor="middle" fill="#555" font-size="8" font-family="-apple-system,sans-serif">W</text>
+
+    <!-- Needle group — rotated around centre (88,88) by JS -->
+    <g id="needle" transform="rotate(0,88,88)">
+      <!-- Tail (into-wind, blunt grey) -->
+      <polygon points="88,88 85,115 88,120 91,115" fill="#444" opacity="0.8"/>
+      <!-- Head (downwind, bright arrow) -->
+      <polygon points="88,88 84,65 88,50 92,65"   fill="#58a6ff"/>
+      <!-- Centre disc -->
+      <circle cx="88" cy="88" r="5" fill="#1a1a2e" stroke="#58a6ff" stroke-width="1.5"/>
+    </g>
+  </svg>
+
+  <!-- Centre content -->
+  <div class="speed" id="spd">–</div>
+  <div class="unit"  id="unit">kts</div>
+  <div class="dir-label" id="dir">–</div>
+  <div class="gust-row">G <span id="gust">–</span></div>
+  <div class="updated" id="upd">–</div>
+</div>
+
+<script>
+// ── Helpers ────────────────────────────────────────────────────────
+function deg2dir(deg) {
+  const d = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+             'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return d[Math.round(deg / 22.5) % 16];
+}
+
+function unitLabel() {
+  if (CONFIG.WIND_UNIT === 'kmh') return 'km/h';
+  if (CONFIG.WIND_UNIT === 'kts') return 'kts';
+  return 'm/s';
+}
+
+function speedColour(v) {
+  const n = parseFloat(v);
+  if (CONFIG.WIND_UNIT === 'kts') {
+    if (n >= 15) return 'green';
+    if (n >= 10) return 'orange';
+    return 'red';
+  }
+  // m/s equivalents (~7.7 / 5.1)
+  if (n >= 7.7) return 'green';
+  if (n >= 5.1) return 'orange';
+  return 'red';
+}
+
+function shortTime(d) {
+  return d.toLocaleTimeString('en-NZ', {
+    hour: '2-digit', minute: '2-digit',
+    timeZone: CONFIG.TIMEZONE
+  });
+}
+
+// ── Fetch & render ─────────────────────────────────────────────────
+async function refresh() {
+  try {
+    const url = `${CONFIG.GAS_URL}?cmd=get_data&hours=1`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'GAS error');
+    const data = j.data;
+    if (!data || !data.length) throw new Error('No data');
+
+    // 10-min moving average of last 10 samples
+    const WIN = 10;
+    const slice = data.slice(-WIN);
+    const ma  = (slice.reduce((s,d) => s + parseFloat(d.ws),   0) / slice.length).toFixed(1);
+    const mg  = (slice.reduce((s,d) => s + parseFloat(d.wmax), 0) / slice.length).toFixed(1);
+    const latest = data[data.length - 1];
+    const wd  = parseFloat(latest.wd);
+    const dirText = (latest.wdt && isNaN(Number(latest.wdt)))
+                    ? latest.wdt : deg2dir(wd);
+
+    // Wind needle points downwind (+180°)
+    const needleDeg = (wd + 180) % 360;
+    document.getElementById('needle').setAttribute('transform',
+      `rotate(${needleDeg},88,88)`);
+
+    // Speed colour
+    const spdEl = document.getElementById('spd');
+    spdEl.textContent = ma;
+    spdEl.className   = 'speed ' + speedColour(ma);
+
+    // Needle colour matches speed
+    const col = { green:'#3fb950', orange:'#f0883e', red:'#f85149' }[speedColour(ma)];
+    document.querySelector('#needle polygon:nth-child(2)').setAttribute('fill', col);
+    document.querySelector('#needle circle').setAttribute('stroke', col);
+
+    document.getElementById('unit').textContent = unitLabel();
+    document.getElementById('dir').textContent  = dirText;
+    document.getElementById('gust').textContent = mg;
+    document.getElementById('upd').textContent  = shortTime(new Date());
+    document.getElementById('face').classList.add('ready');
+
+  } catch (e) {
+    document.getElementById('face').innerHTML =
+      `<div class="error-msg">⚠️ ${e.message}</div>`;
+    document.getElementById('face').classList.add('ready');
+  }
+}
+
+// Run immediately, then every 60 seconds
+refresh();
+setInterval(refresh, 60 * 1000);
+</script>
+</body>
+</html>
