@@ -299,10 +299,10 @@
     </div>
   </div>
 
-  <!-- Wind Speed Chart -->
+  <!-- Wind Chart (speed + direction combined) -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">Wind Speed</span>
+      <span class="section-title">Wind</span>
       <div class="range-btns" id="wind-range-btns">
         <button class="range-btn" data-h="1"  onclick="setWindRange(1)">1h</button>
         <button class="range-btn" data-h="3"  onclick="setWindRange(3)">3h</button>
@@ -311,18 +311,10 @@
     </div>
     <div class="chart-wrap"><canvas id="chart-wind"></canvas></div>
     <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#a371f7"></div> Direction</div>
       <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> 10m MA</div>
       <div class="legend-item"><div class="legend-dash" style="background:#f0883e"></div> Gust</div>
     </div>
-  </div>
-
-  <!-- Wind Direction Chart -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-title">Wind Direction</span>
-      <span class="section-badge" id="dir-badge">24h</span>
-    </div>
-    <div class="chart-wrap"><canvas id="chart-dir"></canvas></div>
   </div>
 
   <!-- Swell Chart -->
@@ -460,14 +452,8 @@ function setWindRange(h) {
   document.querySelectorAll('#wind-range-btns .range-btn').forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.h) === h);
   });
-  // Update direction badge
-  const dirBadge = document.getElementById('dir-badge');
-  if (dirBadge) dirBadge.textContent = h + 'h';
-  // Re-render charts from cached data (no network request needed)
-  if (_lastWindData) {
-    renderWindChart(_lastWindData);
-    renderDirChart(_lastWindData);
-  }
+  // Re-render combined chart from cached data (no network request needed)
+  if (_lastWindData) renderWindChart(_lastWindData);
 }
 
 // Apply persisted range on load (runs after DOM ready via init)
@@ -475,8 +461,6 @@ function applyInitialWindRange() {
   document.querySelectorAll('#wind-range-btns .range-btn').forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.h) === windHours);
   });
-  const dirBadge = document.getElementById('dir-badge');
-  if (dirBadge) dirBadge.textContent = windHours + 'h';
 }
 
 /* ── Moving average helper ────────────────────────────────────── */
@@ -491,25 +475,58 @@ function movingAvg(values, window) {
 }
 const MA_WINDOW = 10; // 10-minute moving average (assumes 1 reading/min)
 
-/* ── Wind chart ───────────────────────────────────────────────── */
+/* ── Wind chart (speed + direction combined) ──────────────────── */
 function renderWindChart(data) {
   _lastWindData = data;   // cache for range re-renders
   destroyChart('wind');
+  destroyChart('dir');    // clean up old standalone dir chart if present
   const ctx = document.getElementById('chart-wind').getContext('2d');
   const labels = data.map(d => d.t);
-  const raw      = data.map(d => toDisplaySpeed(d.ws));
-  const ma       = movingAvg(raw, MA_WINDOW);
-  const rawGust  = data.map(d => toDisplaySpeed(d.wmax));
-  const gust     = movingAvg(rawGust, MA_WINDOW);
+
+  // Speed datasets (right axis yS)
+  const raw     = data.map(d => toDisplaySpeed(d.ws));
+  const ma      = movingAvg(raw, MA_WINDOW);
+  const rawGust = data.map(d => toDisplaySpeed(d.wmax));
+  const gust    = movingAvg(rawGust, MA_WINDOW);
+
+  // Direction dataset (left axis yD) — insert null gaps on >180° wraps
+  const active = data.filter(d => d.wmax > 0);
+  const dirData = [];
+  for (let i = 0; i < active.length; i++) {
+    if (i > 0 && Math.abs(active[i].wd - active[i-1].wd) > 180) {
+      dirData.push({ x: active[i].t, y: null });
+    }
+    dirData.push({ x: active[i].t, y: active[i].wd });
+  }
+
+  const xAxis = Object.assign(timeScaleOpts('hour', null, true), {
+    min: Date.now() - windHours * 3600e3,
+  });
 
   charts.wind = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
       datasets: [
+        // Direction — left axis, drawn behind speed lines
+        {
+          label: 'Direction',
+          data: dirData,
+          yAxisID: 'yD',
+          borderColor: '#a371f7',
+          backgroundColor: 'rgba(163,113,247,0.08)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          spanGaps: false,
+          order: 3,
+        },
+        // Gust — right axis
         {
           label: 'Gust',
           data: gust,
+          yAxisID: 'yS',
           borderColor: '#f0883e',
           borderWidth: 1.5,
           pointRadius: 0,
@@ -517,11 +534,13 @@ function renderWindChart(data) {
           fill: false,
           order: 2,
         },
+        // 10m MA — right axis
         {
           label: '10m MA',
           data: ma,
+          yAxisID: 'yS',
           borderColor: '#58a6ff',
-          backgroundColor: 'rgba(88,166,255,0.15)',
+          backgroundColor: 'rgba(88,166,255,0.12)',
           borderWidth: 2,
           pointRadius: 0,
           tension: 0.4,
@@ -538,16 +557,39 @@ function renderWindChart(data) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} ${unitLabel()}`
+            label: ctx => {
+              if (ctx.dataset.label === 'Direction') {
+                const deg = ctx.parsed.y;
+                return deg != null ? `Dir: ${deg}° ${deg2dir(deg)}` : '';
+              }
+              return `${ctx.dataset.label}: ${ctx.parsed.y} ${unitLabel()}`;
+            }
           }
         }
       },
       scales: {
-        x: Object.assign(timeScaleOpts('hour', null, true), {
-          min: Date.now() - windHours * 3600e3,
-        }),
-        y: {
+        x: xAxis,
+        // Left axis — direction (0–360, compass labels)
+        yD: {
+          position: 'left',
           grid: GRID,
+          min: 0,
+          max: 360,
+          afterBuildTicks: axis => {
+            axis.ticks = [0,45,90,135,180,225,270,315,360].map(v => ({ value: v }));
+          },
+          ticks: {
+            maxRotation: 0,
+            callback: v => {
+              const map = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW',360:'N'};
+              return map[v] !== undefined ? map[v] : '';
+            }
+          }
+        },
+        // Right axis — wind speed
+        yS: {
+          position: 'right',
+          grid: { drawOnChartArea: false }, // don't double-up grid lines
           beginAtZero: true,
           ticks: {
             callback: v => v + ' ' + unitLabel(),
@@ -559,76 +601,8 @@ function renderWindChart(data) {
   });
 }
 
-/* ── Direction chart ──────────────────────────────────────────── */
-function renderDirChart(data) {
-  destroyChart('dir');
-  const ctx = document.getElementById('chart-dir').getContext('2d');
-
-  // Filter calm readings, then build a line dataset that inserts null gaps
-  // wherever direction wraps around (>180° jump), avoiding ugly vertical lines.
-  const active = data.filter(d => d.wmax > 0);
-  const lineData = [];
-  for (let i = 0; i < active.length; i++) {
-    if (i > 0 && Math.abs(active[i].wd - active[i-1].wd) > 180) {
-      lineData.push({ x: active[i].t, y: null });
-    }
-    lineData.push({ x: active[i].t, y: active[i].wd });
-  }
-
-  // Fixed 0–360 scale so all cardinal points are always visible.
-  const dMin = 0, dMax = 360;
-
-  charts.dir = new Chart(ctx, {
-    type: 'line',
-    data: {
-      datasets: [{
-        label: 'Direction',
-        data: lineData,
-        borderColor: '#58a6ff',
-        backgroundColor: 'rgba(88,166,255,0.12)',
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.3,
-        fill: 'origin',
-        spanGaps: false,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const deg = ctx.parsed.y;
-              return `${deg}° ${deg2dir(deg)}`;
-            }
-          }
-        }
-      },
-      scales: {
-        x: Object.assign(timeScaleOpts('hour', null, true), {
-          min: Date.now() - windHours * 3600e3,
-        }),
-        y: {
-          grid: GRID,
-          min: dMin,
-          max: dMax,
-          afterBuildTicks: axis => {
-            axis.ticks = [0,45,90,135,180,225,270,315,360].map(v => ({ value: v }));
-          },
-          ticks: {
-            callback: v => {
-              const map = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW',360:'N'};
-              return map[v] !== undefined ? map[v] : '';
-            }
-          }
-        }
-      }
-    }
-  });
-}
+// Kept as a no-op stub so any stale call sites don't throw
+function renderDirChart(data) {}
 
 /* ── Swell chart ──────────────────────────────────────────────── */
 function renderSwellChart(times, heights, periods, directions) {
