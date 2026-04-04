@@ -74,6 +74,42 @@
       max-width: 148px;
     }
 
+    /* ── Trend chart card ───────────────────────────────────────── */
+    .chart-card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      padding: 10px 10px 8px;
+      margin: 10px 8px 16px;
+    }
+    .chart-card .card-label {
+      margin-bottom: 6px;
+    }
+    .trend-svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .chart-legend {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 5px;
+    }
+    .chart-legend span {
+      font-size: 9px;
+      color: #8b949e;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .chart-legend i {
+      display: inline-block;
+      width: 12px;
+      height: 2px;
+      border-radius: 1px;
+    }
+
     /* ── Error state ────────────────────────────────────────────── */
     .status-bar {
       margin: 8px 8px 0;
@@ -141,6 +177,16 @@
     <div class="card-sub" id="wind-dir-text">–</div>
   </div>
 
+  <!-- Trend chart -->
+  <div class="chart-card">
+    <div class="card-label">1h Trend</div>
+    <div id="trend-chart"><!-- built by JS --></div>
+    <div class="chart-legend">
+      <span><i style="background:#58a6ff"></i> Avg</span>
+      <span><i style="background:#f0883e"></i> Gust</span>
+    </div>
+  </div>
+
 <script>
 // ── Helpers (identical to main dashboard) ─────────────────────────
 function deg2dir(deg) {
@@ -167,10 +213,72 @@ function speedColour(v) {
 
 const MA_WINDOW = 10;
 
+function movingAvg(values, win) {
+  return values.map((_, i) => {
+    const s = values.slice(Math.max(0, i - win + 1), i + 1);
+    return s.reduce((a, v) => a + v, 0) / s.length;
+  });
+}
+
 function showError(msg) {
   const bar = document.getElementById('status-bar');
   bar.textContent = msg;
   bar.className = 'status-bar error';
+}
+
+// ── Trend chart — pure SVG, no dependencies ────────────────────────
+function buildTrendChart(data) {
+  const W = 148, H = 84;
+  const L = 22, R = W - 4, T = 5, B = H - 14; // plot margins
+  const cW = R - L, cH = B - T;
+
+  const maVals   = movingAvg(data.map(d => parseFloat(d.ws)),   MA_WINDOW);
+  const gustVals = movingAvg(data.map(d => parseFloat(d.wmax)), MA_WINDOW);
+
+  const maxVal = Math.max(...gustVals, 5);
+  const yMax   = Math.ceil(maxVal / 5) * 5;
+  const n      = data.length;
+
+  function px(i) { return (L + (i / (n - 1)) * cW).toFixed(1); }
+  function py(v) { return (B - (v / yMax) * cH).toFixed(1); }
+
+  function polyPoints(vals) {
+    return vals.map((v, i) => `${px(i)},${py(v)}`).join(' ');
+  }
+  function areaPath(vals) {
+    const pts = vals.map((v, i) => `L${px(i)},${py(v)}`).join('');
+    return `M${L},${B}${pts}L${R},${B}Z`;
+  }
+
+  // Gridlines at every 5 kts
+  let grids = '';
+  for (let v = 5; v <= yMax; v += 5) {
+    const y = py(v);
+    grids += `<line x1="${L}" y1="${y}" x2="${R}" y2="${y}" stroke="#21262d" stroke-width="0.5"/>`;
+    grids += `<text x="${L-2}" y="${parseFloat(y)+2.5}" text-anchor="end" font-size="6.5" fill="#484f58" font-family="-apple-system,sans-serif">${v}</text>`;
+  }
+
+  // Time labels: first, middle, last
+  function fmtT(d) {
+    return new Date(d.t).toLocaleTimeString('en-NZ', {
+      hour: '2-digit', minute: '2-digit', timeZone: CONFIG.TIMEZONE
+    });
+  }
+  const tL = fmtT(data[0]);
+  const tM = fmtT(data[Math.floor(n / 2)]);
+  const tR = fmtT(data[n - 1]);
+
+  return `<svg class="trend-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    ${grids}
+    <line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#30363d" stroke-width="0.5"/>
+    <path d="${areaPath(gustVals)}" fill="rgba(240,136,62,0.10)"/>
+    <polyline points="${polyPoints(gustVals)}" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="${areaPath(maVals)}" fill="rgba(88,166,255,0.15)"/>
+    <polyline points="${polyPoints(maVals)}" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linejoin="round"/>
+    <text x="${L}"           y="${H-1}" font-size="7" fill="#484f58" font-family="-apple-system,sans-serif">${tL}</text>
+    <text x="${L + cW / 2}"  y="${H-1}" text-anchor="middle" font-size="7" fill="#484f58" font-family="-apple-system,sans-serif">${tM}</text>
+    <text x="${R}"           y="${H-1}" text-anchor="end"    font-size="7" fill="#484f58" font-family="-apple-system,sans-serif">${tR}</text>
+  </svg>`;
 }
 
 // ── Fetch & render ─────────────────────────────────────────────────
@@ -212,6 +320,9 @@ async function refresh() {
     const fromLabel = (latest.wdt && isNaN(Number(latest.wdt)))
                       ? latest.wdt : deg2dir(wd);
     document.getElementById('wind-dir-text').textContent = 'from ' + fromLabel;
+
+    // Trend chart
+    document.getElementById('trend-chart').innerHTML = buildTrendChart(data);
 
     // Updated time
     document.getElementById('updated-time').textContent =
