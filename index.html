@@ -305,8 +305,8 @@
       <span class="section-title">Wind</span>
       <div class="range-btns" id="wind-range-btns">
         <button class="range-btn" data-h="1"  onclick="setWindRange(1)">1h</button>
-        <button class="range-btn" data-h="3"  onclick="setWindRange(3)">3h</button>
-        <button class="range-btn active" data-h="24" onclick="setWindRange(24)">24h</button>
+        <button class="range-btn active" data-h="3"  onclick="setWindRange(3)">3h</button>
+        <button class="range-btn" data-h="24" onclick="setWindRange(24)">24h</button>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="chart-wind"></canvas></div>
@@ -443,7 +443,7 @@ function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete chart
 let _lastWindData = null;
 
 // Restore persisted range preference, default to full CONFIG window
-let windHours = parseInt(localStorage.getItem('windHours') || CONFIG.WIND_HOURS, 10);
+let windHours = parseInt(localStorage.getItem('windHours') || 3, 10);
 
 function setWindRange(h) {
   windHours = h;
