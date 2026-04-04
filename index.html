@@ -150,6 +150,30 @@
       padding: 2px 8px;
       border-radius: 10px;
     }
+
+    /* ── Range toggle buttons ───────────────────────────────────── */
+    .range-btns {
+      display: flex;
+      gap: 4px;
+    }
+    .range-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #8b949e;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .range-btn:hover { background: #30363d; color: #c9d1d9; }
+    .range-btn.active {
+      background: #1f6feb;
+      border-color: #388bfd;
+      color: #f0f6fc;
+    }
     .chart-wrap {
       padding: 12px 10px 8px;
       position: relative;
@@ -279,7 +303,11 @@
   <div class="section">
     <div class="section-header">
       <span class="section-title">Wind Speed</span>
-      <span class="section-badge" id="wind-badge">24 h</span>
+      <div class="range-btns" id="wind-range-btns">
+        <button class="range-btn" data-h="1"  onclick="setWindRange(1)">1h</button>
+        <button class="range-btn" data-h="3"  onclick="setWindRange(3)">3h</button>
+        <button class="range-btn active" data-h="24" onclick="setWindRange(24)">24h</button>
+      </div>
     </div>
     <div class="chart-wrap"><canvas id="chart-wind"></canvas></div>
     <div class="legend">
@@ -292,7 +320,7 @@
   <div class="section">
     <div class="section-header">
       <span class="section-title">Wind Direction</span>
-      <span class="section-badge">24 h</span>
+      <span class="section-badge" id="dir-badge">24h</span>
     </div>
     <div class="chart-wrap"><canvas id="chart-dir"></canvas></div>
   </div>
@@ -418,6 +446,39 @@ function timeScaleOpts(unit, fmt, pinToNow) {
 let charts = {};
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
+/* ── Wind range selector ──────────────────────────────────────── */
+// Cached wind data so we can re-render without re-fetching
+let _lastWindData = null;
+
+// Restore persisted range preference, default to full CONFIG window
+let windHours = parseInt(localStorage.getItem('windHours') || CONFIG.WIND_HOURS, 10);
+
+function setWindRange(h) {
+  windHours = h;
+  localStorage.setItem('windHours', h);
+  // Update button active states
+  document.querySelectorAll('#wind-range-btns .range-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.h) === h);
+  });
+  // Update direction badge
+  const dirBadge = document.getElementById('dir-badge');
+  if (dirBadge) dirBadge.textContent = h + 'h';
+  // Re-render charts from cached data (no network request needed)
+  if (_lastWindData) {
+    renderWindChart(_lastWindData);
+    renderDirChart(_lastWindData);
+  }
+}
+
+// Apply persisted range on load (runs after DOM ready via init)
+function applyInitialWindRange() {
+  document.querySelectorAll('#wind-range-btns .range-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.h) === windHours);
+  });
+  const dirBadge = document.getElementById('dir-badge');
+  if (dirBadge) dirBadge.textContent = windHours + 'h';
+}
+
 /* ── Moving average helper ────────────────────────────────────── */
 // Returns an array of trailing moving averages over `window` samples.
 // Points at the start of the series use whatever samples are available.
@@ -432,6 +493,7 @@ const MA_WINDOW = 10; // 10-minute moving average (assumes 1 reading/min)
 
 /* ── Wind chart ───────────────────────────────────────────────── */
 function renderWindChart(data) {
+  _lastWindData = data;   // cache for range re-renders
   destroyChart('wind');
   const ctx = document.getElementById('chart-wind').getContext('2d');
   const labels = data.map(d => d.t);
@@ -481,7 +543,9 @@ function renderWindChart(data) {
         }
       },
       scales: {
-        x: timeScaleOpts('hour', null, true),
+        x: Object.assign(timeScaleOpts('hour', null, true), {
+          min: Date.now() - windHours * 3600e3,
+        }),
         y: {
           grid: GRID,
           beginAtZero: true,
@@ -544,7 +608,9 @@ function renderDirChart(data) {
         }
       },
       scales: {
-        x: timeScaleOpts('hour', null, true),
+        x: Object.assign(timeScaleOpts('hour', null, true), {
+          min: Date.now() - windHours * 3600e3,
+        }),
         y: {
           grid: GRID,
           min: dMin,
@@ -915,9 +981,9 @@ async function loadAll() {
   if (windResult.status === 'fulfilled' && windResult.value && windResult.value.length) {
     const data = windResult.value;
     updateWindCard(data);
-    renderWindChart(data);
+    renderWindChart(data);   // also sets _lastWindData
     renderDirChart(data);
-    document.getElementById('wind-badge').textContent = CONFIG.WIND_HOURS + ' h';
+    applyInitialWindRange(); // sync button highlight & dir badge
   } else {
     errors.push('Wind data unavailable — check GAS_URL in CONFIG');
     console.error('Wind fetch error:', windResult.reason || 'no data');
