@@ -19,7 +19,8 @@ const CONFIG = {
   WIND_UNIT:  'kts',
 
   // How many hours of wind history to fetch (max 168)
-  WIND_HOURS: 24,
+  // Set to 48 so the 48h range button has data to show.
+  WIND_HOURS: 48,
 
   // Auto-refresh interval in minutes (0 = disabled)
   REFRESH_MIN: 5,
