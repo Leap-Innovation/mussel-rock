@@ -305,8 +305,9 @@
       <span class="section-title">Wind</span>
       <div class="range-btns" id="wind-range-btns">
         <button class="range-btn" data-h="1"  onclick="setWindRange(1)">1h</button>
-        <button class="range-btn active" data-h="3"  onclick="setWindRange(3)">3h</button>
+        <button class="range-btn active" data-h="4"  onclick="setWindRange(4)">4h</button>
         <button class="range-btn" data-h="24" onclick="setWindRange(24)">24h</button>
+        <button class="range-btn" data-h="48" onclick="setWindRange(48)">48h</button>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="chart-wind"></canvas></div>
@@ -443,7 +444,7 @@ function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete chart
 let _lastWindData = null;
 
 // Restore persisted range preference, default to full CONFIG window
-let windHours = parseInt(localStorage.getItem('windHours') || 3, 10);
+let windHours = parseInt(localStorage.getItem('windHours') || 4, 10);
 
 function setWindRange(h) {
   windHours = h;
@@ -499,9 +500,21 @@ function renderWindChart(data) {
     dirData.push({ x: active[i].t, y: active[i].wd });
   }
 
+  const windowStart = Date.now() - windHours * 3600e3;
   const xAxis = Object.assign(timeScaleOpts('hour', null, true), {
-    min: Date.now() - windHours * 3600e3,
+    min: windowStart,
   });
+
+  // Auto-scale y-axis to the data visible in the selected window
+  const visibleGust = gust.filter((_, i) => new Date(labels[i]).getTime() >= windowStart);
+  const visibleMa   = ma.filter((_, i)   => new Date(labels[i]).getTime() >= windowStart);
+  const visibleSpeeds = [...visibleGust, ...visibleMa].filter(v => v != null && isFinite(v));
+  const yMin = visibleSpeeds.length
+    ? Math.floor(Math.min(...visibleSpeeds) / 5) * 5
+    : 0;
+  const yMax = visibleSpeeds.length
+    ? Math.ceil(Math.max(...visibleSpeeds) / 5) * 5
+    : 30;
 
   charts.wind = new Chart(ctx, {
     type: 'line',
@@ -586,11 +599,12 @@ function renderWindChart(data) {
             }
           }
         },
-        // Right axis — wind speed
+        // Right axis — wind speed (auto-scaled to visible window)
         yS: {
           position: 'right',
-          grid: { drawOnChartArea: false }, // don't double-up grid lines
-          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          min: yMin,
+          max: yMax,
           ticks: {
             callback: v => v + ' ' + unitLabel(),
             maxTicksLimit: 5,
