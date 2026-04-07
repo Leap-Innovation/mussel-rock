@@ -505,16 +505,12 @@ function renderWindChart(data) {
     min: windowStart,
   });
 
-  // Auto-scale y-axis to the data visible in the selected window
+  // Auto-scale y-axis exactly to the data visible in the selected window
   const visibleGust = gust.filter((_, i) => new Date(labels[i]).getTime() >= windowStart);
   const visibleMa   = ma.filter((_, i)   => new Date(labels[i]).getTime() >= windowStart);
   const visibleSpeeds = [...visibleGust, ...visibleMa].filter(v => v != null && isFinite(v));
-  const yMin = visibleSpeeds.length
-    ? Math.floor(Math.min(...visibleSpeeds) / 5) * 5
-    : 0;
-  const yMax = visibleSpeeds.length
-    ? Math.ceil(Math.max(...visibleSpeeds) / 5) * 5
-    : 30;
+  const yMin = visibleSpeeds.length ? Math.min(...visibleSpeeds) : 0;
+  const yMax = visibleSpeeds.length ? Math.max(...visibleSpeeds) : 30;
 
   charts.wind = new Chart(ctx, {
     type: 'line',
